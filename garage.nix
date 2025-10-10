@@ -4,6 +4,7 @@
   # Enable Garage distributed storage
   services.garage = {
     enable = true;
+    package = pkgs.garage;
     logLevel = "info";
     settings = {
       # Data storage paths - customize per node
