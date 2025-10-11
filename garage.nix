@@ -52,7 +52,7 @@
     };
 
     # Use environment file for sensitive configuration
-    environmentFile = "/etc/garage/garage.env";
+    environmentFile = "/etc/hyphae/secrets/garage.env";
   };
 
   # Open firewall ports for Garage services
@@ -65,35 +65,41 @@
     ];
   };
 
-  # Create garage user, data directories, and environment file
+  # Create garage user, data directories, and secrets directories
   systemd.tmpfiles.rules = [
     "d /var/lib/garage 0755 garage garage -"
     "d /var/lib/garage/data 0755 garage garage -"
     "d /var/lib/garage/meta 0755 garage garage -"
     "d /etc/garage 0755 root root -"
+    "d /etc/hyphae 0755 root root -"
+    "d /etc/hyphae/secrets 0700 root root -"
   ];
 
-  # Create default environment file with placeholder values
-  environment.etc."garage/garage.env" = {
+  # Generate secrets during system activation
+  system.activationScripts.hyphae-secrets = {
     text = ''
-      # Garage Environment Configuration
-      # Replace these with actual values for production
+      # Ensure secrets directory exists
+      mkdir -p /etc/hyphae/secrets
 
-      # Admin interface token (generate with: openssl rand -base64 32)
-      GARAGE_ADMIN_TOKEN=change-this-admin-token
-
-      # Metrics token (generate with: openssl rand -base64 32)
-      GARAGE_METRICS_TOKEN=change-this-metrics-token
-
-      # Optional: RPC secret for inter-node auth (generate with: openssl rand -base64 32)
-      # GARAGE_RPC_SECRET=change-this-rpc-secret
+      # Generate the environment file with all secrets if it doesn't exist
+      if [[ ! -f /etc/hyphae/secrets/garage.env ]]; then
+        echo "Generating garage environment file with new secrets..."
+        cat > /etc/hyphae/secrets/garage.env << EOF
+# Garage Environment Configuration - Auto-generated secrets
+GARAGE_RPC_SECRET=$(${pkgs.openssl}/bin/openssl rand -hex 32)
+GARAGE_ADMIN_TOKEN=$(${pkgs.openssl}/bin/openssl rand -base64 32)
+GARAGE_METRICS_TOKEN=$(${pkgs.openssl}/bin/openssl rand -base64 32)
+EOF
+        chmod 600 /etc/hyphae/secrets/garage.env
+        echo "Garage secrets generated successfully"
+      else
+        echo "Garage environment file already exists, using existing secrets"
+      fi
     '';
-    mode = "0600";
-    user = "garage";
-    group = "garage";
+    deps = [ ];
   };
 
-  # Ensure garage service starts after yggdrasil
+  # Configure garage service dependencies
   systemd.services.garage = {
     after = [ "yggdrasil.service" ];
     wants = [ "yggdrasil.service" ];

@@ -133,21 +133,19 @@ services.garage = {
 
 ### Security Configuration
 
-Use environment files for sensitive data:
+**Automatic Secret Generation**: The Hyphae module automatically generates all required secrets on first startup, eliminating manual configuration:
 
-```nix
-# Create secure environment file
-environment.etc."garage/garage.env" = {
-  text = ''
-    GARAGE_ADMIN_TOKEN=your-secure-token-here
-    GARAGE_METRICS_TOKEN=your-metrics-token-here
-    # GARAGE_RPC_SECRET=optional-cluster-auth-secret
-  '';
-  mode = "0600";
-  user = "garage";
-  group = "garage";
-};
-```
+- **RPC Secret**: Auto-generated and stored in `/etc/hyphae/secrets/garage_rpc_key`
+- **Admin Token**: Auto-generated and stored in `/etc/hyphae/secrets/garage_admin_token`
+- **Metrics Token**: Auto-generated and stored in `/etc/hyphae/secrets/garage_metrics_token`
+
+Secrets are automatically:
+- Generated using cryptographically secure random data (`openssl rand -base64 32`)
+- Stored with 600 permissions (owner-readable only)
+- Persistent across system rebuilds and reboots
+- Used to create the environment file at startup
+
+No manual secret management required - just deploy the module and it works!
 
 ### Directory Setup
 
