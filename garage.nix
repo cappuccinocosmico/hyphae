@@ -12,7 +12,7 @@
       metadata_dir = "/var/lib/garage/meta";
 
       # Cluster configuration
-      replication_mode = "2";  # 2 copies across nodes for 2-node setup
+      replication_mode = "1"; 
 
       # RPC configuration for inter-node communication
       # Bind to all interfaces, will be accessible via Yggdrasil
@@ -65,7 +65,7 @@
     ];
   };
 
-  # Create garage user, data directories, and secrets directories
+  # Create garage user, data directories, secrets directories, and mount points
   systemd.tmpfiles.rules = [
     "d /var/lib/garage 0755 garage garage -"
     "d /var/lib/garage/data 0755 garage garage -"
@@ -73,6 +73,8 @@
     "d /etc/garage 0755 root root -"
     "d /etc/hyphae 0755 root root -"
     "d /etc/hyphae/secrets 0700 root root -"
+    "d /etc/hyphae/mounts 0755 root root -"
+    "d /etc/hyphae/mounts/hyphae-data 0755 root root -"
   ];
 
   # Generate secrets during system activation
@@ -103,5 +105,45 @@ EOF
   systemd.services.garage = {
     after = [ "yggdrasil.service" ];
     wants = [ "yggdrasil.service" ];
+  };
+
+  # Add s3fs package for mounting S3 buckets
+  environment.systemPackages = [ pkgs.s3fs ];
+
+  # Generate S3 credentials for mounting
+  system.activationScripts.hyphae-s3-credentials = {
+    text = ''
+      # Create S3 credentials file for s3fs if it doesn't exist
+      if [[ ! -f /etc/hyphae/secrets/s3-credentials ]]; then
+        echo "Generating S3 credentials for bucket mounting..."
+        cat > /etc/hyphae/secrets/s3-credentials << EOF
+# S3 credentials for hyphae-data bucket mounting
+# Default access key and secret for Garage
+hyphae-access-key:hyphae-secret-key
+EOF
+        chmod 600 /etc/hyphae/secrets/s3-credentials
+        echo "S3 credentials file created (you'll need to update with actual keys after bucket setup)"
+      fi
+    '';
+    deps = [ "hyphae-secrets" ];
+  };
+
+  # Mount hyphae-data S3 bucket using s3fs
+  fileSystems."/etc/hyphae/mounts/hyphae-data" = {
+    device = "hyphae-data";
+    fsType = "fuse.s3fs";
+    options = [
+      "passwd_file=/etc/hyphae/secrets/s3-credentials"
+      "url=http://localhost:3900"  # Garage S3 API endpoint
+      "use_path_request_style"     # Required for Garage compatibility
+      "allow_other"                # Allow other users to access
+      "uid=0"                      # Mount as root
+      "gid=0"                      # Mount as root group
+      "umask=022"                  # Readable by all, writable by owner
+      "nonempty"                   # Allow mounting on non-empty directory
+      "_netdev"                    # Wait for network
+    ];
+    # Only mount after garage service is running
+    depends = [ "garage.service" ];
   };
 }
