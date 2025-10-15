@@ -1,5 +1,8 @@
 { config, lib, pkgs, ... }:
 
+let
+  hyphaeLib = import ./lib.nix { inherit lib pkgs; };
+in
 {
   # Enable Garage distributed storage
   services.garage = {
@@ -131,19 +134,8 @@ EOF
   # Mount hyphae-data S3 bucket using s3fs
   fileSystems."/etc/hyphae/mounts/hyphae-data" = {
     device = "hyphae-data";
-    fsType = "fuse.s3fs";
-    options = [
-      "passwd_file=/etc/hyphae/secrets/s3-credentials"
-      "url=http://localhost:3900"  # Garage S3 API endpoint
-      "use_path_request_style"     # Required for Garage compatibility
-      "allow_other"                # Allow other users to access
-      "uid=0"                      # Mount as root
-      "gid=0"                      # Mount as root group
-      "umask=022"                  # Readable by all, writable by owner
-      "nonempty"                   # Allow mounting on non-empty directory
-      "_netdev"                    # Wait for network
-    ];
-    # Only mount after garage service is running
+    fsType = "fuse./run/current-system/sw/bin/s3fs";
+    options = hyphaeLib.defaultHyphaeMountOptions;
     depends = [ "garage.service" ];
   };
 }
