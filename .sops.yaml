@@ -1,0 +1,10 @@
+keys:
+  - &host_vermissian age1uyyh4hgs9dspqx9f9r3pavq64aatgrcfz5k2tuj0m90z0u6fd3rqgzen7w
+  - &nicole_dev age1uqgf3ucl5vrwmruux0pjkzzkequwecgu0z2vxetf730g5nqrm46svcfcjn
+
+creation_rules:
+  - path_regex: secrets/[^/]+\.(yaml|json|env|ini)$
+    key_groups:
+    - age:
+      - *host_vermissian
+      - *nicole_dev

@@ -4,18 +4,18 @@
   # Flake inputs
   inputs = {
     nixpkgs.url = "https://flakehub.com/f/NixOS/nixpkgs/0"; # Stable Nixpkgs
-    agenix.url = "github:ryantm/agenix";
-    agenix.inputs.nixpkgs.follows = "nixpkgs";
+    sops-nix.url = "github:Mic92/sops-nix";
+    sops-nix.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   # Flake outputs
   outputs =
-    { self, agenix, ... }@inputs:
+    { self, sops-nix, ... }@inputs:
     {
       # Export NixOS module for integration into other flakes
       nixosModules.default = { config, lib, pkgs, ... }: {
         imports = [
-          agenix.nixosModules.default
+          sops-nix.nixosModules.sops
           ./yggdrasil.nix
           ./garage.nix
           ./kavita.nix

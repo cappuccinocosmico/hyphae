@@ -4,6 +4,16 @@ let
   hyphaeLib = import ./lib.nix { inherit lib pkgs; };
 in
 {
+  # Configure sops-nix for kavita token
+  sops.defaultSopsFile = ./secrets/secrets.yaml;
+  sops.age.sshKeyPaths = [ "/etc/ssh/ssh_host_ed25519_key" ];
+
+
+  # Define kavita secret with hyphae group access
+  sops.secrets.kavita-token = {
+    mode = "0440";
+    group = "hyphae";
+  };
   # Enable Kavita digital library service
   services.kavita = {
     enable = true;
@@ -13,7 +23,7 @@ in
       Port = 5000;
       IpAddresses = "::"; # Bind to all interfaces for Yggdrasil access
     };
-    tokenKeyFile = "/etc/hyphae/secrets/kavita-token";
+    tokenKeyFile = config.sops.secrets.kavita-token.path;
   };
 
   # Open firewall for Kavita web interface
@@ -29,19 +39,6 @@ in
     "d /etc/hyphae/mounts/hyphae-books 0755 root root -"
   ];
 
-  # Generate Kavita token during system activation
-  system.activationScripts.hyphae-kavita-token = {
-    text = ''
-      # Generate Kavita JWT token if it doesn't exist
-      if [[ ! -f /etc/hyphae/secrets/kavita-token ]]; then
-        echo "Generating Kavita JWT token..."
-        ${pkgs.openssl}/bin/openssl rand -base64 64 > /etc/hyphae/secrets/kavita-token
-        chmod 600 /etc/hyphae/secrets/kavita-token
-        echo "Kavita token generated successfully"
-      fi
-    '';
-    deps = [ "hyphae-secrets" ];
-  };
 
   # Mount hyphae-books S3 bucket for Kavita library storage
   fileSystems."/etc/hyphae/mounts/hyphae-books" = {
@@ -56,9 +53,10 @@ in
     after = [ "garage.service" "etc-hyphae-mounts-hyphae\\x2dbooks.mount" ];
     wants = [ "garage.service" "etc-hyphae-mounts-hyphae\\x2dbooks.mount" ];
 
-    # Ensure kavita can access the mounted books directory
+    # Ensure kavita can access the mounted books directory and hyphae secrets
     serviceConfig = {
       BindPaths = [ "/etc/hyphae/mounts/hyphae-books:/var/lib/kavita/books" ];
+      SupplementaryGroups = [ "hyphae" ];
     };
   };
 }

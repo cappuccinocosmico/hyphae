@@ -4,6 +4,28 @@ let
   hyphaeLib = import ./lib.nix { inherit lib pkgs; };
 in
 {
+  # Configure sops-nix for secrets management
+  sops.defaultSopsFile = ./secrets/secrets.yaml;
+  sops.age.sshKeyPaths = [ "/etc/ssh/ssh_host_ed25519_key" ];
+
+  # Create hyphae group for shared access to secrets
+  users.groups.hyphae = {};
+
+  # Define secrets with proper permissions for hyphae services
+  sops.secrets.garage-rpc-secret = {
+    mode = "0440";
+    group = "hyphae";
+  };
+  sops.secrets.garage-admin-token = {
+    mode = "0440";
+    group = "hyphae";
+  };
+  sops.secrets.garage-metrics-token = {
+    mode = "0440";
+    group = "hyphae";
+  };
+  sops.secrets.s3-access-key-id = {};
+  sops.secrets.s3-secret-key = {};
   # Enable Garage distributed storage
   services.garage = {
     enable = true;
@@ -25,8 +47,8 @@ in
       # For now using placeholder - should be configured per-node
       rpc_public_addr = "[::1]:3901";
 
-      # Optional: Configure RPC secret for cluster security
-      # rpc_secret_file = "/etc/garage/rpc-secret";
+      # RPC secret for cluster security (managed by sops-nix)
+      rpc_secret_file = config.sops.secrets.garage-rpc-secret.path;
 
       # S3 API configuration
       s3_api = {
@@ -41,11 +63,9 @@ in
       # Web admin interface
       admin = {
         api_bind_addr = "[::]:3903";
-        # Admin token should be set via environment file for security
-        admin_token = "change-this-admin-token";
-
-        # Optional: Metrics endpoint
-        metrics_token = "change-this-metrics-token";
+        # Admin and metrics tokens (managed by sops-nix)
+        admin_token_file = config.sops.secrets.garage-admin-token.path;
+        metrics_token_file = config.sops.secrets.garage-metrics-token.path;
       };
 
       # K2V API (optional, for key-value storage)
@@ -54,8 +74,7 @@ in
       # };
     };
 
-    # Use environment file for sensitive configuration
-    environmentFile = "/etc/hyphae/secrets/garage.env";
+    # Secrets are now managed by sops-nix, no environment file needed
   };
 
   # Open firewall ports for Garage services
@@ -80,56 +99,28 @@ in
     "d /etc/hyphae/mounts/hyphae-data 0755 root root -"
   ];
 
-  # Generate secrets during system activation
-  system.activationScripts.hyphae-secrets = {
-    text = ''
-      # Ensure secrets directory exists
-      mkdir -p /etc/hyphae/secrets
+  # Create S3 credentials file using sops-nix templates
+  sops.templates."s3-credentials".content = ''
+    ${config.sops.placeholder."s3-access-key-id"}:${config.sops.placeholder."s3-secret-key"}
+  '';
+  sops.templates."s3-credentials".mode = "0600";
+  sops.templates."s3-credentials".path = "/etc/hyphae/secrets/s3-credentials";
 
-      # Generate the environment file with all secrets if it doesn't exist
-      if [[ ! -f /etc/hyphae/secrets/garage.env ]]; then
-        echo "Generating garage environment file with new secrets..."
-        cat > /etc/hyphae/secrets/garage.env << EOF
-# Garage Environment Configuration - Auto-generated secrets
-GARAGE_RPC_SECRET=$(${pkgs.openssl}/bin/openssl rand -hex 32)
-GARAGE_ADMIN_TOKEN=$(${pkgs.openssl}/bin/openssl rand -base64 32)
-GARAGE_METRICS_TOKEN=$(${pkgs.openssl}/bin/openssl rand -base64 32)
-EOF
-        chmod 600 /etc/hyphae/secrets/garage.env
-        echo "Garage secrets generated successfully"
-      else
-        echo "Garage environment file already exists, using existing secrets"
-      fi
-    '';
-    deps = [ ];
-  };
-
-  # Configure garage service dependencies
+  # Configure garage service dependencies and group membership
   systemd.services.garage = {
     after = [ "yggdrasil.service" ];
     wants = [ "yggdrasil.service" ];
+    serviceConfig = {
+      SupplementaryGroups = [ "hyphae" ];
+    };
+    environment = {
+      GARAGE_ALLOW_WORLD_READABLE_SECRETS = "true";
+    };
   };
 
   # Add s3fs package for mounting S3 buckets
   environment.systemPackages = [ pkgs.s3fs ];
 
-  # Generate S3 credentials for mounting
-  system.activationScripts.hyphae-s3-credentials = {
-    text = ''
-      # Create S3 credentials file for s3fs if it doesn't exist
-      if [[ ! -f /etc/hyphae/secrets/s3-credentials ]]; then
-        echo "Generating S3 credentials for bucket mounting..."
-        cat > /etc/hyphae/secrets/s3-credentials << EOF
-# S3 credentials for hyphae-data bucket mounting
-# Default access key and secret for Garage
-hyphae-access-key:hyphae-secret-key
-EOF
-        chmod 600 /etc/hyphae/secrets/s3-credentials
-        echo "S3 credentials file created (you'll need to update with actual keys after bucket setup)"
-      fi
-    '';
-    deps = [ "hyphae-secrets" ];
-  };
 
   # Mount hyphae-data S3 bucket using s3fs
   fileSystems."/etc/hyphae/mounts/hyphae-data" = {

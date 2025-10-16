@@ -40,17 +40,15 @@ check_garage_available() {
     log_success "Garage CLI found"
 }
 
-# Load garage environment variables
+# Load garage environment variables from sops secrets
 load_garage_env() {
-    if [[ -f "/etc/hyphae/secrets/garage.env" ]]; then
-        log_info "Loading Garage environment variables..."
-        set -a  # Export all variables
-        source /etc/hyphae/secrets/garage.env
-        set +a  # Stop exporting
-        export GARAGE_RPC_SECRET
-        log_success "Garage environment loaded"
+    if [[ -f "/run/secrets/garage-rpc-secret" ]]; then
+        log_info "Loading Garage environment variables from sops secrets..."
+        export GARAGE_RPC_SECRET=$(cat /run/secrets/garage-rpc-secret)
+        log_success "Garage environment loaded from sops"
     else
-        log_error "Garage environment file not found at /etc/hyphae/secrets/garage.env"
+        log_error "Garage RPC secret not found at /run/secrets/garage-rpc-secret"
+        log_error "Make sure the system has been rebuilt with sops-nix configuration"
         exit 1
     fi
 }
