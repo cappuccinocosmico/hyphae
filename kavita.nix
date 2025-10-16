@@ -42,9 +42,9 @@ in
 
   # Mount hyphae-books S3 bucket for Kavita library storage
   fileSystems."/etc/hyphae/mounts/hyphae-books" = {
-    device = "hyphae-books";
-    fsType = "fuse./run/current-system/sw/bin/s3fs";
-    options = hyphaeLib.defaultHyphaeMountOptions;
+    device = "garage:hyphae-books";
+    fsType = "rclone";
+    options = hyphaeLib.defaultHyphaeRcloneMountOptions;
     depends = [ "garage.service" ];
   };
 

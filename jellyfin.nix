@@ -33,25 +33,25 @@ in
 
   # Mount hyphae-shows S3 bucket for TV shows
   fileSystems."/etc/hyphae/mounts/hyphae-shows" = {
-    device = "hyphae-shows";
-    fsType = "fuse./run/current-system/sw/bin/s3fs";
-    options = hyphaeLib.defaultHyphaeMountOptions;
+    device = "garage:hyphae-shows";
+    fsType = "rclone";
+    options = hyphaeLib.defaultHyphaeRcloneMountOptions;
     depends = [ "garage.service" ];
   };
 
   # Mount hyphae-movies S3 bucket for movies
   fileSystems."/etc/hyphae/mounts/hyphae-movies" = {
-    device = "hyphae-movies";
-    fsType = "fuse./run/current-system/sw/bin/s3fs";
-    options = hyphaeLib.defaultHyphaeMountOptions;
+    device = "garage:hyphae-movies";
+    fsType = "rclone";
+    options = hyphaeLib.defaultHyphaeRcloneMountOptions;
     depends = [ "garage.service" ];
   };
 
   # Mount hyphae-music S3 bucket for music
   fileSystems."/etc/hyphae/mounts/hyphae-music" = {
-    device = "hyphae-music";
-    fsType = "fuse./run/current-system/sw/bin/s3fs";
-    options = hyphaeLib.defaultHyphaeMountOptions;
+    device = "garage:hyphae-music";
+    fsType = "rclone";
+    options = hyphaeLib.defaultHyphaeRcloneMountOptions;
     depends = [ "garage.service" ];
   };
 

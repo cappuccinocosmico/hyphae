@@ -1,7 +1,7 @@
 { lib, pkgs, ... }:
 
 {
-  # Standard S3FS mount options for all Hyphae buckets
+  # Standard S3FS mount options for all Hyphae buckets (legacy)
   defaultHyphaeMountOptions = [
     "passwd_file=/etc/hyphae/secrets/s3-credentials"
     "url=http://localhost:3900"  # Garage S3 API endpoint
@@ -10,13 +10,23 @@
     "allow_other"                # Allow other users to access
     "uid=0"                      # Mount as root
     "gid=0"                      # Mount as root group
-    "umask=022"                  # Readable by all, writable by owner
+    "umask=000"                  # Read/write by all, no execute permissions
     "nonempty"                   # Allow mounting on non-empty directory
     "_netdev"                    # Wait for network
     "sigv4"                      # Use signature version 4 instead of v2
     "no_check_certificate"       # Skip SSL certificate validation for local connections
     "enable_noobj_cache"         # Performance optimization
     "nofail"                     # Don't fail boot if mount fails
+  ];
+
+  # Rclone mount options for all Hyphae buckets (simplified for debugging)
+  defaultHyphaeRcloneMountOptions = [
+    "nodev"
+    "nofail"
+    "allow_other"
+    "args2env"
+    "config=/etc/hyphae/secrets/rclone.conf"
+    "_netdev"                    # Wait for network
   ];
 
   # Generate mount options that use sops secrets directly

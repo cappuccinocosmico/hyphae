@@ -99,12 +99,27 @@ in
     "d /etc/hyphae/mounts/hyphae-data 0755 root root -"
   ];
 
-  # Create S3 credentials file using sops-nix templates
+  # Create S3 credentials file using sops-nix templates (for s3fs compatibility)
   sops.templates."s3-credentials".content = ''
     ${config.sops.placeholder."s3-access-key-id"}:${config.sops.placeholder."s3-secret-key"}
   '';
   sops.templates."s3-credentials".mode = "0600";
   sops.templates."s3-credentials".path = "/etc/hyphae/secrets/s3-credentials";
+
+  # Create rclone configuration file using sops-nix templates
+  sops.templates."rclone.conf".content = ''
+    [garage]
+    type = s3
+    provider = Other
+    access_key_id = ${config.sops.placeholder."s3-access-key-id"}
+    secret_access_key = ${config.sops.placeholder."s3-secret-key"}
+    endpoint = http://localhost:3900
+    region = hyphae
+    acl = private
+    force_path_style = true
+  '';
+  sops.templates."rclone.conf".mode = "0600";
+  sops.templates."rclone.conf".path = "/etc/hyphae/secrets/rclone.conf";
 
   # Configure garage service dependencies and group membership
   systemd.services.garage = {
@@ -118,15 +133,15 @@ in
     };
   };
 
-  # Add s3fs package for mounting S3 buckets
-  environment.systemPackages = [ pkgs.s3fs ];
+  # Add rclone package for mounting S3 buckets
+  environment.systemPackages = [ pkgs.rclone ];
 
 
-  # Mount hyphae-data S3 bucket using s3fs
+  # Mount hyphae-data S3 bucket using rclone
   fileSystems."/etc/hyphae/mounts/hyphae-data" = {
-    device = "hyphae-data";
-    fsType = "fuse./run/current-system/sw/bin/s3fs";
-    options = hyphaeLib.defaultHyphaeMountOptions;
+    device = "garage:hyphae-data";
+    fsType = "rclone";
+    options = hyphaeLib.defaultHyphaeRcloneMountOptions;
     depends = [ "garage.service" ];
   };
 }
