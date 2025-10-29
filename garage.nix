@@ -32,9 +32,9 @@ in
     package = pkgs.garage;
     logLevel = "info";
     settings = {
-      # Data storage paths - customize per node
-      data_dir = "/var/lib/garage/data";
-      metadata_dir = "/var/lib/garage/meta";
+      # Data storage paths - persistent across NixOS rebuilds
+      data_dir = "/etc/hyphae/persistent/garage/data";
+      metadata_dir = "/etc/hyphae/persistent/garage/meta";
 
       # Cluster configuration
       replication_mode = "1"; 
@@ -89,11 +89,12 @@ in
 
   # Create garage user, data directories, secrets directories, and mount points
   systemd.tmpfiles.rules = [
-    "d /var/lib/garage 0755 garage garage -"
-    "d /var/lib/garage/data 0755 garage garage -"
-    "d /var/lib/garage/meta 0755 garage garage -"
     "d /etc/garage 0755 root root -"
     "d /etc/hyphae 0755 root root -"
+    "d /etc/hyphae/persistent 0755 root root -"
+    "d /etc/hyphae/persistent/garage 0755 garage garage -"
+    "d /etc/hyphae/persistent/garage/data 0755 garage garage -"
+    "d /etc/hyphae/persistent/garage/meta 0755 garage garage -"
     "d /etc/hyphae/secrets 0700 root root -"
     "d /etc/hyphae/mounts 0755 root root -"
     "d /etc/hyphae/mounts/hyphae-data 0755 root root -"

@@ -19,13 +19,18 @@
     "nofail"                     # Don't fail boot if mount fails
   ];
 
-  # Rclone mount options for all Hyphae buckets (simplified for debugging)
+  # Rclone mount options for all Hyphae buckets (optimized for writes)
   defaultHyphaeRcloneMountOptions = [
     "nodev"
     "nofail"
     "allow_other"
     "args2env"
     "config=/etc/hyphae/secrets/rclone.conf"
+    "vfs-cache-mode=full"        # Full caching for better write performance
+    "vfs-cache-max-size=1G"      # Limit cache size to 1GB
+    "vfs-cache-max-age=1h"       # Keep cache for 1 hour
+    "vfs-write-back=5s"          # Write back to storage after 5 seconds
+    "buffer-size=16M"            # Larger buffer for file operations
     "_netdev"                    # Wait for network
   ];
 
