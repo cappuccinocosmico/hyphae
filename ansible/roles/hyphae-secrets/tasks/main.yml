@@ -1,0 +1,28 @@
+---
+# hyphae-secrets role: write age key and encrypted secrets so the Nix-managed
+# hyphae-secrets.service can decrypt them on boot.
+
+- name: Write age private key to /etc/hyphae/age.key
+  ansible.builtin.copy:
+    content: "{{ hyphae_age_key }}"
+    dest: /etc/hyphae/age.key
+    owner: root
+    group: root
+    mode: "0600"
+  # hyphae_age_key must be set in Ansible vault.
+
+- name: Copy encrypted secrets.yaml to node
+  ansible.builtin.copy:
+    src: "{{ hyphae_secrets_file }}"
+    dest: /etc/hyphae/secrets.yaml
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Restart hyphae-secrets to decrypt with the newly written age key
+  ansible.builtin.systemd:
+    name: hyphae-secrets
+    state: restarted
+    daemon_reload: true
+  # system-manager switch (nix role) already deployed and started this service,
+  # but it may have failed without the age key present; restart now to decrypt.

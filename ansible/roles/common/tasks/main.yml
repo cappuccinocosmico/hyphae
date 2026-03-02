@@ -1,0 +1,83 @@
+---
+# common role: system-level prerequisites that Nix cannot handle
+# Creates system users and ensures fuse3 is available.
+
+- name: Create nomad system user
+  ansible.builtin.user:
+    name: nomad
+    system: true
+    shell: /sbin/nologin
+    home: /var/lib/nomad
+    create_home: true
+
+- name: Create consul system user
+  ansible.builtin.user:
+    name: consul
+    system: true
+    shell: /sbin/nologin
+    home: /var/lib/consul
+    create_home: true
+
+- name: Create garage system user
+  ansible.builtin.user:
+    name: garage
+    system: true
+    shell: /sbin/nologin
+    home: /var/lib/garage
+    create_home: true
+
+- name: Create jellyfin system user
+  ansible.builtin.user:
+    name: jellyfin
+    system: true
+    shell: /sbin/nologin
+    home: /var/lib/jellyfin
+    create_home: true
+
+- name: Create kavita system user
+  ansible.builtin.user:
+    name: kavita
+    system: true
+    shell: /sbin/nologin
+    home: /var/lib/kavita
+    create_home: true
+
+- name: Write /etc/fuse.conf (allow FUSE mounts by other users)
+  ansible.builtin.copy:
+    dest: /etc/fuse.conf
+    content: |
+      # /etc/fuse.conf — managed by Ansible (hyphae common role)
+      # Required for geesefs host-level FUSE mounts.
+      user_allow_other
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Ensure fuse kernel module loads at boot
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/fuse.conf
+    content: "fuse\n"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Load fuse module now (idempotent)
+  community.general.modprobe:
+    name: fuse
+    state: present
+
+- name: Create /etc/hyphae directory
+  ansible.builtin.file:
+    path: /etc/hyphae
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Create /run/secrets tmpfs mount point
+  ansible.builtin.file:
+    path: /run/secrets
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"

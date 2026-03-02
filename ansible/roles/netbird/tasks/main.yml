@@ -1,0 +1,46 @@
+---
+# netbird role: write sensitive env file and enroll node into the Netbird mesh.
+# The netbird.service unit is managed by system-manager (nix/modules/netbird.nix).
+
+- name: Create /etc/netbird directory
+  ansible.builtin.file:
+    path: /etc/netbird
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Write netbird.env (management URL and setup key)
+  ansible.builtin.copy:
+    dest: /etc/netbird/netbird.env
+    content: |
+      NETBIRD_MANAGEMENT_URL={{ netbird_management_url }}
+      NETBIRD_SETUP_KEY={{ netbird_setup_key }}
+    owner: root
+    group: root
+    mode: "0600"
+  # netbird_setup_key must be set in Ansible vault or --extra-vars.
+
+- name: Restart netbird service to pick up env file
+  ansible.builtin.systemd:
+    name: netbird
+    state: restarted
+    daemon_reload: true
+  # The Nix netbird.service uses EnvironmentFile=-/etc/netbird/netbird.env (optional),
+  # so it starts even before this file exists; restart here to apply the management URL.
+
+- name: Check if node is already enrolled in Netbird mesh
+  ansible.builtin.command:
+    cmd: /run/system-manager/sw/bin/netbird status
+  register: netbird_status
+  changed_when: false
+  failed_when: false
+
+- name: Enroll node into Netbird mesh (idempotent)
+  ansible.builtin.command:
+    cmd: >
+      /run/system-manager/sw/bin/netbird up
+      --management-url {{ netbird_management_url }}
+      --setup-key {{ netbird_setup_key }}
+  when: "'Connected' not in netbird_status.stdout"
+  # netbird up is safe to re-run; it is a no-op if already enrolled.

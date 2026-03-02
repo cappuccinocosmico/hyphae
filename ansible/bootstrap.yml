@@ -1,0 +1,32 @@
+---
+# Hyphae Phase 1: Bootstrap playbook
+# Brings any bare Linux node to a state where Nomad, Consul, and Netbird
+# are running under systemd and ready for Nomad job specs (Phase 2).
+#
+# Usage:
+#   ansible-playbook bootstrap.yml -l <node> --ask-vault-pass
+#
+# Prerequisites:
+#   - inventory_hostname must match a key in flake.nix systemConfigs
+#   - Sensitive vars required (Ansible vault):
+#       hyphae_age_key    - age private key for /etc/hyphae/age.key
+#       netbird_setup_key - Netbird one-time enrollment key
+
+- name: Bootstrap hyphae cluster node
+  hosts: all
+  become: true
+
+  roles:
+    # 1. System users, fuse kernel module, /etc/hyphae directory
+    #    (kernel-level and user management; cannot be done by Nix)
+    - role: common
+
+    # 2. Install Nix daemon; run system-manager switch to deploy all services
+    #    (writes systemd units and /etc files defined in nix/modules/)
+    - role: nix
+
+    # 3. Write age key + secrets.yaml; restart hyphae-secrets service to decrypt
+    - role: hyphae-secrets
+
+    # 4. Write netbird.env; restart netbird service; enroll into mesh
+    - role: netbird

@@ -1,0 +1,50 @@
+---
+# nix role: install Nix (multi-user) and activate the system-manager configuration
+
+- name: Check if Nix is already installed
+  ansible.builtin.stat:
+    path: /nix/var/nix/profiles/default/bin/nix
+  register: nix_installed
+
+- name: Download Nix installer
+  ansible.builtin.get_url:
+    url: https://install.determinate.systems/nix
+    dest: /tmp/nix-installer.sh
+    mode: "0755"
+  when: not nix_installed.stat.exists
+
+- name: Run Nix multi-user installer (Determinate Systems)
+  ansible.builtin.command:
+    cmd: /tmp/nix-installer.sh install --no-confirm
+  when: not nix_installed.stat.exists
+  # The Determinate Systems installer sets up the Nix daemon and /etc/nix/nix.conf.
+  # It is idempotent on re-runs but we skip it entirely if Nix is already present.
+
+- name: Ensure nix-daemon is enabled and running
+  ansible.builtin.systemd:
+    name: nix-daemon
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Copy hyphae repo to remote (for system-manager switch)
+  ansible.posix.synchronize:
+    src: "{{ playbook_dir }}/../"
+    dest: /opt/hyphae
+    delete: true
+    rsync_opts:
+      - "--exclude=.git"
+      - "--exclude=ansible"
+      - "--filter=:- .gitignore"
+  # flake.nix + flake.lock + nix/modules/ are required for system-manager switch.
+
+- name: Activate system-manager configuration for this node
+  ansible.builtin.command:
+    cmd: >
+      /nix/var/nix/profiles/default/bin/nix run
+      /opt/hyphae#system-manager
+      --extra-experimental-features "nix-command flakes"
+      -- switch --flake /opt/hyphae#{{ inventory_hostname }}
+  changed_when: true
+  # inventory_hostname must match a key in flake.nix systemConfigs.
+  # This deploys all systemd units and /etc files defined in nix/modules/.
