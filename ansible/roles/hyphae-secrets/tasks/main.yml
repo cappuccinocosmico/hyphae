@@ -1,28 +1,60 @@
 ---
-# hyphae-secrets role: write age key and encrypted secrets so the Nix-managed
-# hyphae-secrets.service can decrypt them on boot.
+# hyphae-secrets role: deliver the shared cluster age key and cluster secrets
+# so the Nix-managed sops-install-secrets.service can decrypt them at boot.
+#
+# Requires on the controller:
+#   - sops in PATH (available in `nix develop`)
+#   - operator age key loaded (SOPS_AGE_KEY_FILE or ~/.config/sops/age/keys.txt)
+#
+# Requires in the repo:
+#   - secrets/provisioning.secrets.yaml   (cluster-age-private-key entry)
+#   - secrets/cluster.secrets.yaml        (cluster runtime secrets)
 
-- name: Write age private key to /etc/hyphae/age.key
+- name: Extract shared cluster age private key from provisioning secrets (runs on controller)
+  ansible.builtin.command:
+    cmd: >
+      sops -d --extract '["cluster-age-private-key"]'
+      {{ playbook_dir }}/../secrets/provisioning.secrets.yaml
+  delegate_to: localhost
+  register: cluster_age_key
+  changed_when: false
+  no_log: true
+
+- name: Write cluster age private key to /etc/hyphae/age.key
   ansible.builtin.copy:
-    content: "{{ hyphae_age_key }}"
+    content: "{{ cluster_age_key.stdout }}"
     dest: /etc/hyphae/age.key
     owner: root
     group: root
     mode: "0600"
-  # hyphae_age_key must be set in Ansible vault.
+  no_log: true
 
-- name: Copy encrypted secrets.yaml to node
+- name: Copy cluster secrets to node
   ansible.builtin.copy:
-    src: "{{ hyphae_secrets_file }}"
-    dest: /etc/hyphae/secrets.yaml
+    src: "{{ playbook_dir }}/../secrets/cluster.secrets.yaml"
+    dest: /etc/hyphae/cluster.yaml
     owner: root
     group: root
     mode: "0600"
+  # The node decrypts this at runtime via sops-install-secrets using the
+  # cluster age key above — once cluster secrets are declared in the node's
+  # Nix config and the cluster age public key is added to .sops.yaml.
 
-- name: Restart hyphae-secrets to decrypt with the newly written age key
+- name: Create /etc/hyphae/device-secrets directory
+  ansible.builtin.file:
+    path: /etc/hyphae/device-secrets
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  # Device-specific secrets (Netbird setup key etc.) are written here directly
+  # by Ansible when needed.  They live only on this node and are never in the
+  # repo.  Inspect via SSH: cat /etc/hyphae/device-secrets/<name>
+
+- name: Restart sops-install-secrets to decrypt cluster secrets
   ansible.builtin.systemd:
-    name: hyphae-secrets
+    name: sops-install-secrets
     state: restarted
     daemon_reload: true
-  # system-manager switch (nix role) already deployed and started this service,
-  # but it may have failed without the age key present; restart now to decrypt.
+  # No-op if no sops.secrets are declared in this node's Nix config yet.
+  failed_when: false

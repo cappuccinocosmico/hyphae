@@ -1,10 +1,41 @@
 keys:
-  - &host_vermissian age1uyyh4hgs9dspqx9f9r3pavq64aatgrcfz5k2tuj0m90z0u6fd3rqgzen7w
+  # ── Operator workstations ─────────────────────────────────────────────────
+  - &vermissian age1uyyh4hgs9dspqx9f9r3pavq64aatgrcfz5k2tuj0m90z0u6fd3rqgzen7w
   - &nicole_dev age1uqgf3ucl5vrwmruux0pjkzzkequwecgu0z2vxetf730g5nqrm46svcfcjn
 
+  # ── Shared cluster age keypair ────────────────────────────────────────────
+  # One age keypair whose private key is distributed to every cluster node.
+  # The private key lives in provisioning.secrets.yaml (operator-only).
+  # The public key encrypts cluster.secrets.yaml so any node can decrypt it.
+  #
+  # Generate with:
+  #   age-keygen          # prints public key; save output
+  #   sops secrets/provisioning.secrets.yaml   # add private key under cluster-age-private-key
+  #
+  # Then uncomment the line below and fill in the public key:
+  # - &cluster age1...
+
 creation_rules:
-  - path_regex: secrets/[^/]+\.(yaml|json|env|ini)$
+  # ── Provisioning credentials (operator-only) ──────────────────────────────
+  # NEVER deployed to any cluster node.  Contains:
+  #   - IONOS / Cloudflare API credentials (for Terraform / nixos-anywhere)
+  #   - cluster-age-private-key  (written to each node at bootstrap time)
+  #   - Per-node setup values when needed (e.g. Netbird setup keys under nodes.<hostname>.*)
+  - path_regex: secrets/provisioning\.secrets\.yaml$
     key_groups:
-    - age:
-      - *host_vermissian
-      - *nicole_dev
+      - age:
+        - *vermissian
+        - *nicole_dev
+
+  # ── Cluster runtime secrets ───────────────────────────────────────────────
+  # Deployed to every cluster node; decryptable with the shared cluster age key.
+  # Contains cluster-wide credentials all nodes legitimately need at runtime:
+  #   - Consul gossip encryption key
+  #   - Nomad gossip encryption key
+  #   - Any future shared cluster credentials
+  - path_regex: secrets/cluster\.secrets\.yaml$
+    key_groups:
+      - age:
+        - *vermissian
+        - *nicole_dev
+        # - *cluster   # uncomment after generating the cluster keypair above

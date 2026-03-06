@@ -7,16 +7,32 @@
       url = "github:numtide/system-manager";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    sops-nix = {
+      url = "github:Mic92/sops-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    disko = {
+      url = "github:nix-community/disko";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = { self, nixpkgs, system-manager }:
+  outputs = { self, nixpkgs, system-manager, sops-nix, disko }:
     let
       supportedSystems = [ "x86_64-linux" "aarch64-linux" ];
       forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
-      pkgsFor = system: nixpkgs.legacyPackages.${system};
+      pkgsFor = system: import nixpkgs {
+        inherit system;
+        config.allowUnfree = true;
+        # sops-nix overlay adds pkgs.sops-install-secrets (and friends).
+        overlays = [ sops-nix.overlays.default ];
+      };
 
-      # Shared module list for both system-manager (non-NixOS) and nixosConfigurations.
-      nodeModules =
+      # Build a system-manager config for a non-NixOS cluster node.
+      # The key passed as `systemConfigs.<key>` must match inventory_hostname
+      # in Ansible so the nix role can run:
+      #   nix run .#system-manager -- switch --flake /opt/hyphae#<hostname>
+      mkNode =
         { nodeRole
         , consulDatacenter
         , hasStorage ? false
@@ -27,78 +43,64 @@
         , consulRetryJoinWan ? []
         , nomadIsServer ? false
         , nomadBootstrapExpect ? 3
+        , system ? "x86_64-linux"
+        # Additional modules for per-node customisation (e.g. sops.secrets declarations).
+        , extraModules ? []
         }:
-        [
-          ./nix/modules/fuse.nix
-          ./nix/modules/hyphae-secrets.nix
-          (import ./nix/modules/consul.nix {
-            datacenter = consulDatacenter;
-            isServer = consulIsServer;
-            bootstrapExpect = consulBootstrapExpect;
-            retryJoin = consulRetryJoin;
-            retryJoinWan = consulRetryJoinWan;
-          })
-          (import ./nix/modules/nomad.nix {
-            inherit nodeRole hasStorage hasGpu;
-            isServer = nomadIsServer;
-            bootstrapExpect = nomadBootstrapExpect;
-          })
-          ./nix/modules/netbird.nix
-        ];
-
-      # Build a system-manager config for a non-NixOS cluster node.
-      # The key in systemConfigs must match inventory_hostname in Ansible so the
-      # nix role can run:
-      #   nix run .#system-manager -- switch --flake /opt/hyphae#<hostname>
-      mkNode = args @ { system ? "x86_64-linux", ... }:
         system-manager.lib.makeSystemConfig {
-          modules = [ { nixpkgs.hostPlatform = system; } ]
-            ++ nodeModules (builtins.removeAttrs args [ "system" ]);
-        };
-
-      # Build a NixOS config for a cluster node running NixOS.
-      # Users are managed declaratively here (unlike non-NixOS where Ansible handles them).
-      # Pass extraModules for host-specific config (hardware-configuration.nix, etc.).
-      # Deploy with: nixos-rebuild switch --flake .#<hostname>
-      mkNixosNode = args @ { system ? "x86_64-linux", extraModules ? [], ... }:
-        nixpkgs.lib.nixosSystem {
-          inherit system;
-          modules = nodeModules (builtins.removeAttrs args [ "system" "extraModules" ]) ++ [
+          modules = [
             {
-              users.users.consul = { isSystemUser = true; group = "consul"; };
-              users.users.nomad  = { isSystemUser = true; group = "nomad";  };
-              users.groups.consul = {};
-              users.groups.nomad  = {};
+              nixpkgs.hostPlatform = system;
+              # Apply overlay so pkgs.sops-install-secrets is available in all modules.
+              nixpkgs.overlays = [ sops-nix.overlays.default ];
             }
+            ./nix/modules/fuse.nix
+            ./nix/modules/sops.nix
+            (import ./nix/modules/consul.nix {
+              datacenter      = consulDatacenter;
+              isServer        = consulIsServer;
+              bootstrapExpect = consulBootstrapExpect;
+              retryJoin       = consulRetryJoin;
+              retryJoinWan    = consulRetryJoinWan;
+            })
+            (import ./nix/modules/nomad.nix {
+              inherit nodeRole hasStorage hasGpu;
+              isServer        = nomadIsServer;
+              bootstrapExpect = nomadBootstrapExpect;
+            })
+            ./nix/modules/netbird.nix
           ] ++ extraModules;
         };
     in
     {
-      # Per-node system-manager configurations (non-NixOS hosts).
-      # Add an entry here for every host in ansible/inventory/hosts.ini,
+      # ── NixOS nodes ───────────────────────────────────────────────────────
+      # Full NixOS systems managed via nixos-anywhere + nixos-rebuild.
+      # These are NOT in systemConfigs (system-manager is for non-NixOS hosts).
+      nixosConfigurations.vps1 = nixpkgs.lib.nixosSystem {
+        system = "x86_64-linux";
+        modules = [
+          disko.nixosModules.disko
+          sops-nix.nixosModules.sops
+          ./nix/hosts/vps1/disk-config.nix
+          ./nix/hosts/vps1/configuration.nix
+          ./nix/modules/netbird-relay.nix
+        ];
+      };
+
+      # ── system-manager nodes (non-NixOS hosts) ────────────────────────────
+      # Add an entry here for every non-NixOS host in ansible/inventory/hosts.ini,
       # using the exact inventory_hostname as the attribute name.
       systemConfigs = {
         storage1 = mkNode { nodeRole = "storage"; consulDatacenter = "home"; hasStorage = true; };
-        vps1     = mkNode { nodeRole = "vps";     consulDatacenter = "cloud"; };
         light1   = mkNode { nodeRole = "edge";    consulDatacenter = "home"; };
         gpu1     = mkNode { nodeRole = "edge";    consulDatacenter = "home"; hasGpu = true; };
-      };
-
-      # Per-node NixOS configurations (NixOS hosts).
-      # Add hardware-configuration.nix and any host-specific NixOS options via extraModules.
-      # Deploy with: nixos-rebuild switch --flake .#<hostname>
-      nixosConfigurations = {
-        # storage1 = mkNixosNode {
-        #   nodeRole = "storage"; consulDatacenter = "home"; hasStorage = true;
-        #   extraModules = [ ./hosts/storage1/hardware-configuration.nix ];
-        # };
       };
 
       # Expose the pinned system-manager binary as a runnable app.
       # Ansible nix role runs: nix run /opt/hyphae#system-manager -- switch --flake /opt/hyphae#<hostname>
       apps = forAllSystems (system: {
         system-manager = {
-          type = "app";
+          type    = "app";
           program = "${system-manager.packages.${system}.system-manager}/bin/system-manager";
         };
       });
@@ -114,8 +116,9 @@
               netbird
               sops
               age
-              # garage # uncomment when garage is in nixpkgs stable
               ansible
+              nixos-anywhere  # deploy vps1 (and future NixOS nodes)
+              # garage        # uncomment when garage is in nixpkgs stable
             ];
           };
         }

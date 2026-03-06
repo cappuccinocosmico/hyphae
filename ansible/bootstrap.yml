@@ -1,16 +1,21 @@
 ---
 # Hyphae Phase 1: Bootstrap playbook
-# Brings any bare Linux node to a state where Nomad, Consul, and Netbird
-# are running under systemd and ready for Nomad job specs (Phase 2).
+# Brings any bare Linux node (non-NixOS) to a state where Nomad, Consul, and
+# Netbird are running under systemd and ready for Nomad job specs (Phase 2).
 #
 # Usage:
-#   ansible-playbook bootstrap.yml -l <node> --ask-vault-pass
+#   nix develop   # ensure sops, age, ansible are in PATH
+#   ansible-playbook bootstrap.yml -l <node>
 #
 # Prerequisites:
 #   - inventory_hostname must match a key in flake.nix systemConfigs
-#   - Sensitive vars required (Ansible vault):
-#       hyphae_age_key    - age private key for /etc/hyphae/age.key
-#       netbird_setup_key - Netbird one-time enrollment key
+#   - secrets/devices/{{ inventory_hostname }}.yaml must exist (sops-encrypted)
+#   - secrets/cluster.yaml must exist (sops-encrypted)
+#   - Operator age key must be accessible to sops
+#     (SOPS_AGE_KEY_FILE or ~/.config/sops/age/keys.txt)
+#
+# NixOS nodes (vps1, etc.) are NOT bootstrapped via this playbook.
+# Deploy them with nixos-anywhere — see nix/hosts/<hostname>/configuration.nix.
 
 - name: Bootstrap hyphae cluster node
   hosts: all
@@ -25,7 +30,7 @@
     #    (writes systemd units and /etc files defined in nix/modules/)
     - role: nix
 
-    # 3. Write age key + secrets.yaml; restart hyphae-secrets service to decrypt
+    # 3. Write age key + encrypted secrets; restart sops-install-secrets to decrypt
     - role: hyphae-secrets
 
     # 4. Write netbird.env; restart netbird service; enroll into mesh

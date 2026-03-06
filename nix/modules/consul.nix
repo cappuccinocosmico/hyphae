@@ -70,8 +70,10 @@
   systemd.services.consul = {
     description = "Consul cluster agent";
     documentation = [ "https://www.consul.io/" ];
-    requires = [ "network-online.target" "hyphae-secrets.service" ];
-    after = [ "network-online.target" "hyphae-secrets.service" ];
+    requires = [ "network-online.target" ];
+    # sops-install-secrets is a soft ordering dep: consul waits for secrets if
+    # the service exists, but does not fail if no secrets are declared for this node.
+    after = [ "network-online.target" "sops-install-secrets.service" ];
     wantedBy = [ "multi-user.target" ];
     serviceConfig = {
       User = "consul";

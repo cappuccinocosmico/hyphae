@@ -1,14 +1,14 @@
 ---
-# URL of the Netbird management server.
-# Set this to your Netbird management URL before running the playbook.
-netbird_management_url: "https://netbird.example.com"
+# URL of the self-hosted Netbird management server.
+# Update this once vps1 is deployed and DNS is live.
+netbird_management_url: "https://netbird.mycor.io"
 
-# Sensitive vars (set in Ansible vault or via --extra-vars):
-#   hyphae_age_key      - age private key written to /etc/hyphae/age.key
-#   netbird_setup_key   - Netbird one-time enrollment key for this node/group
-
-# Path to the encrypted secrets file in the repo (relative to the repo root).
-hyphae_secrets_file: "{{ playbook_dir }}/../secrets/secrets.yaml"
+# Path to the cluster-wide encrypted secrets file.
+# Copied by hyphae-secrets role to /etc/hyphae/cluster.yaml on each node.
+# (hyphae_secrets_file is no longer used; paths are now hardcoded in the role.)
 
 # NOTE: inventory_hostname must match a key in flake.nix systemConfigs so that
 # the nix role can run: nix run /opt/hyphae#system-manager -- switch --flake /opt/hyphae#<hostname>
+#
+# NixOS nodes (vps1, etc.) must NOT be in this inventory — they are managed
+# via nixos-anywhere + nixos-rebuild, not Ansible.

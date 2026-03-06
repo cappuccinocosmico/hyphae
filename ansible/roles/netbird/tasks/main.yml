@@ -1,6 +1,27 @@
 ---
-# netbird role: write sensitive env file and enroll node into the Netbird mesh.
+# netbird role: write the management URL env file and start the netbird service.
 # The netbird.service unit is managed by system-manager (nix/modules/netbird.nix).
+#
+# Enrollment (netbird up) is a separate step performed after vps1 is deployed
+# and a setup key has been created in the Netbird management server.
+#
+# To enroll a node after bootstrap:
+#   1. Get a setup key from the management server:
+#        curl -s -H "Authorization: Bearer <token>" \
+#             https://netbird.mycor.io/api/setup-keys | jq
+#      Or create one:
+#        curl -s -X POST -H "Authorization: Bearer <token>" \
+#             -H "Content-Type: application/json" \
+#             -d '{"name":"storage1","type":"reusable","expiry_days":0}' \
+#             https://netbird.mycor.io/api/setup-keys
+#
+#   2. Store it in the node's device secrets:
+#        echo -n "<key>" > /etc/hyphae/device-secrets/netbird-setup-key
+#        chmod 600 /etc/hyphae/device-secrets/netbird-setup-key
+#
+#   3. Run enrollment:
+#        netbird up --management-url https://netbird.mycor.io \
+#                   --setup-key $(cat /etc/hyphae/device-secrets/netbird-setup-key)
 
 - name: Create /etc/netbird directory
   ansible.builtin.file:
@@ -10,37 +31,21 @@
     group: root
     mode: "0700"
 
-- name: Write netbird.env (management URL and setup key)
+- name: Write netbird.env with management URL
   ansible.builtin.copy:
     dest: /etc/netbird/netbird.env
     content: |
       NETBIRD_MANAGEMENT_URL={{ netbird_management_url }}
-      NETBIRD_SETUP_KEY={{ netbird_setup_key }}
     owner: root
     group: root
     mode: "0600"
-  # netbird_setup_key must be set in Ansible vault or --extra-vars.
+  # The setup key is NOT written here — obtain it from the management server
+  # after vps1 is deployed and add it to /etc/hyphae/device-secrets/netbird-setup-key.
+  # The netbird.service uses EnvironmentFile=-/etc/netbird/netbird.env (optional),
+  # so the service starts and waits; enroll separately with `netbird up --setup-key`.
 
-- name: Restart netbird service to pick up env file
+- name: Restart netbird service to pick up management URL
   ansible.builtin.systemd:
     name: netbird
     state: restarted
     daemon_reload: true
-  # The Nix netbird.service uses EnvironmentFile=-/etc/netbird/netbird.env (optional),
-  # so it starts even before this file exists; restart here to apply the management URL.
-
-- name: Check if node is already enrolled in Netbird mesh
-  ansible.builtin.command:
-    cmd: /run/system-manager/sw/bin/netbird status
-  register: netbird_status
-  changed_when: false
-  failed_when: false
-
-- name: Enroll node into Netbird mesh (idempotent)
-  ansible.builtin.command:
-    cmd: >
-      /run/system-manager/sw/bin/netbird up
-      --management-url {{ netbird_management_url }}
-      --setup-key {{ netbird_setup_key }}
-  when: "'Connected' not in netbird_status.stdout"
-  # netbird up is safe to re-run; it is a no-op if already enrolled.

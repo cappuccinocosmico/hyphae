@@ -64,8 +64,9 @@
   systemd.services.nomad = {
     description = "Nomad cluster agent";
     documentation = [ "https://www.nomadproject.io/" ];
-    requires = [ "network-online.target" "hyphae-secrets.service" "consul.service" ];
-    after = [ "network-online.target" "hyphae-secrets.service" "consul.service" ];
+    requires = [ "network-online.target" "consul.service" ];
+    # sops-install-secrets is a soft ordering dep (see consul.nix for rationale).
+    after = [ "network-online.target" "sops-install-secrets.service" "consul.service" ];
     wantedBy = [ "multi-user.target" ];
     serviceConfig = {
       # Root is required: Nomad manages raw_exec child processes and chowns task dirs.
